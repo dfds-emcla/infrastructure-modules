@@ -1,6 +1,6 @@
 locals {
   provider_aws = [for s in var.crossplane_providers : lower(s) if length(try(regex("^crossplane/provider-aws:", s), [])) > 0]
-  provider_kubernetes = [for s in var.crossplane_providers : lower(s) if length(try(regex("^crossplane/provider-kubernetes:", s), [])) > 0]
+  // provider_kubernetes = [for s in var.crossplane_providers : lower(s) if length(try(regex("^crossplane/provider-kubernetes:", s), [])) > 0]
 }
 
 resource "helm_release" "crossplane" {
@@ -246,67 +246,89 @@ resource "aws_iam_role_policy_attachment" "admin-attach" {
   policy_arn = "arn:aws:iam::aws:policy/AdministratorAccess"
 }
 
-resource "kubectl_manifest" "kubernetes_provider_controllerconfig" {
+// resource "kubectl_manifest" "kubernetes_provider_controllerconfig" {
 
-  count = length(local.provider_kubernetes) > 0 ? 1 : 0
+//   count = length(local.provider_kubernetes) > 0 ? 1 : 0
 
-  yaml_body = <<YAML
-apiVersion: pkg.crossplane.io/v1alpha1
-kind: ControllerConfig
-metadata:
-  name: kubernetes-provider-config
-YAML
+//   yaml_body = <<YAML
+// apiVersion: pkg.crossplane.io/v1alpha1
+// kind: ControllerConfig
+// metadata:
+//   name: kubernetes-provider-config
+// YAML
 
-  depends_on = [helm_release.crossplane]
+//   depends_on = [helm_release.crossplane]
 
-}
+// }
 
-resource "kubectl_manifest" "kubernetes_provider" {
+// resource "kubectl_manifest" "kubernetes_provider" {
 
-  count = length(local.provider_kubernetes) > 0 ? 1 : 0
+//   count = length(local.provider_kubernetes) > 0 ? 1 : 0
 
-  yaml_body = <<YAML
-apiVersion: pkg.crossplane.io/v1
-kind: Provider
-metadata:
-  name: "${replace(split(":", local.provider_kubernetes[count.index])[0], "/", "-")}"
-spec:
-  package: "${local.provider_kubernetes[count.index]}"
-  controllerConfigRef:
-    name: kubernetes-provider-config
-YAML
+//   yaml_body = <<YAML
+// apiVersion: pkg.crossplane.io/v1
+// kind: Provider
+// metadata:
+//   name: "${replace(split(":", local.provider_kubernetes[count.index])[0], "/", "-")}"
+// spec:
+//   package: "${local.provider_kubernetes[count.index]}"
+//   controllerConfigRef:
+//     name: kubernetes-provider-config
+// YAML
 
-  wait = true
+//   wait = true
 
-  depends_on = [helm_release.crossplane, kubectl_manifest.kubernetes_provider_controllerconfig]
+//   depends_on = [helm_release.crossplane, kubectl_manifest.kubernetes_provider_controllerconfig]
+
+// }
+
+// data "external" "provider_kubernetes_serviceaccount" {
+//   program = ["kubectl", "-n upbound-system get sa -o name | grep provider-kubernetes | sed -e 's|serviceaccount/|upbound-system:|g' | jq -R"]
+// }
+
+
+
+// resource "kubectl_manifest" "kubernetes_provider_clusterrole_binding" {
+//   count = length(local.provider_kubernetes) > 0 ? 1 : 0
+
+//   yaml_body = <<YAML
+// apiVersion: rbac.authorization.k8s.io/v1
+// kind: ClusterRoleBinding
+// metadata:
+//   name: provider-kubernetes-admin-binding
+// subjects:
+// - kind: ServiceAccount
+//   name: data.external.provider_kubernetes_serviceaccount.result
+//   namespace: ${helm_release.crossplane.namespace}
+// roleRef:
+//   kind: ClusterRole
+//   name: cluster-admin
+//   apiGroup: rbac.authorization.k8s.io
+// YAML
+
+//   depends_on = [kubectl_manifest.kubernetes_provider]
+// }
+
+data "aws_caller_identity" "current" {
 
 }
 
 data "external" "provider_kubernetes_serviceaccount" {
-  program = ["kubectl", "-n upbound-system get sa -o name | grep provider-kubernetes | sed -e 's|serviceaccount/|upbound-system:|g' | jq -R"]
+  // program = ["kubectl", "-n upbound-system get sa -o name | grep provider-aws | sed -e 's|serviceaccount/|upbound-system:|g' | jq -R"]
+  // program = ["kubectl", "-n upbound-system get sa crossplane -o name"]
+
+    // program = ["/bin/bash", "-c" "echo \"{\\\"token\\\":\\\"$(docker swarm init...)\\\"}\""]
+    # program = ["/bin/bash", "-c", "echo \"{\\\"token\\\":\\\"$(kubectl -n upbound-system get sa crossplane -o name)\\\"}\""]
+    program = ["/bin/bash", "-c", "echo \"{\\\"token\\\":\\\"hello\\\"}\""] 
+
+    # program = ["/bin/bash", "-c", "echo \"{\\\"token\\\":\\\"$(echo hello2)\\\"}\""] working
+# program = ["/bin/bash", "-c", "echo \"{\\\"token\\\":\\\"$(kubectl -n upbound-system get sa crossplane -o json | jq .metadata.name)\\\"}\""]
+
+
+# program = ["/bin/bash", "-c", "echo \"{\\\"token\\\":\\\"$(kubectl -n upbound-system get sa crossplane -o json | jq .metadata.name | jq -r)\\\"}\""]
+
 }
 
-resource "kubectl_manifest" "kubernetes_provider_clusterrole_binding" {
-  count = length(local.provider_kubernetes) > 0 ? 1 : 0
-
-  yaml_body = <<YAML
-apiVersion: rbac.authorization.k8s.io/v1
-kind: ClusterRoleBinding
-metadata:
-  name: provider-kubernetes-admin-binding
-subjects:
-- kind: ServiceAccount
-  name: data.external.provider_kubernetes_serviceaccount.result
-  namespace: ${helm_release.crossplane.namespace}
-roleRef:
-  kind: ClusterRole
-  name: cluster-admin
-  apiGroup: rbac.authorization.k8s.io
-YAML
-
-  depends_on = [kubectl_manifest.kubernetes_provider]
-}
-
-data "aws_caller_identity" "current" {
-
+output "provider_kubernetes_serviceaccount" {
+  value = data.external.provider_kubernetes_serviceaccount.result.token
 }
